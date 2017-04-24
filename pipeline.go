@@ -24,13 +24,15 @@ type Pipeline struct {
 	wg           sync.WaitGroup
 	ctx          context.Context
 	cancel       context.CancelFunc
+	onComplete   func()
 }
 
 // NewPipeline creates a new pipeline ready to run the given DataProcessors.
 // For more complex use-cases, see NewBranchingPipeline.
-func NewPipeline(ctx context.Context, processors ...DataProcessor) *Pipeline {
+func NewPipeline(ctx context.Context, onComplete func(), processors ...DataProcessor) *Pipeline {
 	p := &Pipeline{Name: "Pipeline"}
 	p.ctx, p.cancel = context.WithCancel(ctx)
+	p.onComplete = onComplete
 	stages := make([]*PipelineStage, len(processors))
 	for i, p := range processors {
 		dp := Do(p)
@@ -47,9 +49,9 @@ func NewPipeline(ctx context.Context, processors ...DataProcessor) *Pipeline {
 // given PipelineLayout, which can accommodate branching/merging
 // between stages each containing variable number of DataProcessors.
 // See the ratchet package documentation for code examples and diagrams.
-func NewBranchingPipeline(ctx context.Context, layout *PipelineLayout) *Pipeline {
+func NewBranchingPipeline(ctx context.Context, onComplete func(), layout *PipelineLayout) *Pipeline {
 	ctx, cancel := context.WithCancel(ctx)
-	p := &Pipeline{layout: layout, Name: "Pipeline", ctx: ctx, cancel: cancel}
+	p := &Pipeline{layout: layout, Name: "Pipeline", ctx: ctx, cancel: cancel, onComplete: onComplete}
 	return p
 }
 
@@ -181,6 +183,11 @@ func (p *Pipeline) Run() (killChan chan error) {
 	}()
 
 	go func() {
+		defer func() {
+			if p.onComplete != nil {
+				p.onComplete()
+			}
+		}()
 		for {
 			select {
 			case err := <-innerKillChan:
