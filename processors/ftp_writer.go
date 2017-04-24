@@ -1,12 +1,13 @@
 package processors
 
 import (
+	"context"
 	"io"
 
+	"github.com/jlaffaye/ftp"
 	"github.com/rhansen2/ratchet/data"
 	"github.com/rhansen2/ratchet/logger"
 	"github.com/rhansen2/ratchet/util"
-	"github.com/jlaffaye/ftp"
 )
 
 // FtpWriter type represents an ftp writter processor
@@ -27,15 +28,15 @@ func NewFtpWriter(host, username, password, path string) *FtpWriter {
 }
 
 // connect - opens a connection to the provided ftp host and then authenticates with the host with the username, password attributes
-func (f *FtpWriter) connect(killChan chan error) {
+func (f *FtpWriter) connect(killChan chan error, ctx context.Context) {
 	conn, err := ftp.Dial(f.host)
 	if err != nil {
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 	}
 
 	lerr := conn.Login(f.username, f.password)
 	if lerr != nil {
-		util.KillPipelineIfErr(lerr, killChan)
+		util.KillPipelineIfErr(lerr, killChan, ctx)
 	}
 
 	r, w := io.Pipe()
@@ -47,15 +48,15 @@ func (f *FtpWriter) connect(killChan chan error) {
 }
 
 // ProcessData writes data as is directly to the output file
-func (f *FtpWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (f *FtpWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	logger.Debug("FTPWriter Process data:", string(d))
 	if !f.authenticated {
-		f.connect(killChan)
+		f.connect(killChan, ctx)
 	}
 
 	_, e := f.fileWriter.Write([]byte(d))
 	if e != nil {
-		util.KillPipelineIfErr(e, killChan)
+		util.KillPipelineIfErr(e, killChan, ctx)
 	}
 }
 

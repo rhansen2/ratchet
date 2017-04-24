@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -25,19 +26,19 @@ func NewHTTPRequest(method, url string, body io.Reader) (*HTTPRequest, error) {
 }
 
 // ProcessData sends data to outputChan if the response body is not null
-func (r *HTTPRequest) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (r *HTTPRequest) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	resp, err := r.Client.Do(r.Request)
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 	if resp != nil && resp.Body != nil {
 		dd, err := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 		outputChan <- dd
 	}
 }
 
 // Finish - see interface for documentation.
-func (r *HTTPRequest) Finish(outputChan chan data.JSON, killChan chan error) {
+func (r *HTTPRequest) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
 func (r *HTTPRequest) String() string {

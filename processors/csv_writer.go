@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"io"
 
 	"github.com/rhansen2/ratchet/data"
@@ -32,12 +33,12 @@ func NewCSVWriter(w io.Writer) *CSVWriter {
 }
 
 // ProcessData defers to util.CSVProcess
-func (w *CSVWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
-	util.CSVProcess(&w.Parameters, d, outputChan, killChan)
+func (w *CSVWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
+	util.CSVProcess(&w.Parameters, d, outputChan, killChan, ctx)
 }
 
 // Finish - see interface for documentation.
-func (w *CSVWriter) Finish(outputChan chan data.JSON, killChan chan error) {
+func (w *CSVWriter) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
 func (w *CSVWriter) String() string {

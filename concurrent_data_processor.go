@@ -51,7 +51,7 @@ func (dp *dataProcessor) processData(d data.JSON, killChan chan error) {
 	// If no concurrency is needed, simply call stage.ProcessData and return...
 	if dp.concurrency <= 1 {
 		dp.recordExecution(func() {
-			dp.ProcessData(d, dp.outputChan, killChan)
+			dp.ProcessData(d, dp.outputChan, killChan, dp.ctx)
 		})
 		return
 	}
@@ -84,13 +84,15 @@ func (dp *dataProcessor) processData(d data.JSON, killChan chan error) {
 				dp.sendResults()
 				exit <- true
 				return
+			case <-dp.ctx.Done():
+				return
 			}
 		}
 	}()
 	// do normal data processing, passing in new result chan
 	// instead of the original outputChan
 	go dp.recordExecution(func() {
-		dp.ProcessData(d, rc, killChan)
+		dp.ProcessData(d, rc, killChan, dp.ctx)
 		done <- true
 	})
 

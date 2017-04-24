@@ -3,6 +3,7 @@ package processors
 import (
 	"bufio"
 	"compress/gzip"
+	"context"
 	"io"
 
 	"github.com/rhansen2/ratchet/data"
@@ -23,38 +24,38 @@ func NewIoReader(reader io.Reader) *IoReader {
 }
 
 // ProcessData overwrites the reader if the content is Gzipped, then defers to ForEachData
-func (r *IoReader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (r *IoReader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	if r.Gzipped {
 		gzReader, err := gzip.NewReader(r.Reader)
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 		r.Reader = gzReader
 	}
 	r.ForEachData(killChan, func(d data.JSON) {
 		outputChan <- d
-	})
+	}, ctx)
 }
 
 // Finish - see interface for documentation.
-func (r *IoReader) Finish(outputChan chan data.JSON, killChan chan error) {
+func (r *IoReader) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
 // ForEachData either reads by line or by buffered stream, sending the data
 // back to the anonymous func that ultimately shoves it onto the outputChan
-func (r *IoReader) ForEachData(killChan chan error, foo func(d data.JSON)) {
+func (r *IoReader) ForEachData(killChan chan error, foo func(d data.JSON), ctx context.Context) {
 	if r.LineByLine {
-		r.scanLines(killChan, foo)
+		r.scanLines(killChan, foo, ctx)
 	} else {
 		r.bufferedRead(killChan, foo)
 	}
 }
 
-func (r *IoReader) scanLines(killChan chan error, forEach func(d data.JSON)) {
+func (r *IoReader) scanLines(killChan chan error, forEach func(d data.JSON), ctx context.Context) {
 	scanner := bufio.NewScanner(r.Reader)
 	for scanner.Scan() {
 		forEach(data.JSON(scanner.Text()))
 	}
 	err := scanner.Err()
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 }
 
 func (r *IoReader) bufferedRead(killChan chan error, forEach func(d data.JSON)) {

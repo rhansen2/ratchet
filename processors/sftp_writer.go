@@ -1,12 +1,14 @@
 package processors
 
 import (
+	"context"
+
 	"golang.org/x/crypto/ssh"
 
+	"github.com/pkg/sftp"
 	"github.com/rhansen2/ratchet/data"
 	"github.com/rhansen2/ratchet/logger"
 	"github.com/rhansen2/ratchet/util"
-	"github.com/pkg/sftp"
 )
 
 // SftpWriter is an inline writer to remote sftp server
@@ -43,15 +45,15 @@ func NewSftpWriterByFile(file *sftp.File) *SftpWriter {
 }
 
 // ProcessData writes data as is directly to the output file
-func (w *SftpWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (w *SftpWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	logger.Debug("SftpWriter Process data:", string(d))
-	w.ensureInitialized(killChan)
+	w.ensureInitialized(killChan, ctx)
 	_, e := w.file.Write([]byte(d))
-	util.KillPipelineIfErr(e, killChan)
+	util.KillPipelineIfErr(e, killChan, ctx)
 }
 
 // Finish optionally closes open references to the remote file and server
-func (w *SftpWriter) Finish(outputChan chan data.JSON, killChan chan error) {
+func (w *SftpWriter) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	if w.CloseOnFinish {
 		w.file.Close()
 		w.client.Close()
@@ -63,18 +65,18 @@ func (w *SftpWriter) String() string {
 }
 
 // ensureInitialized calls connect and then creates the output file on the sftp server at the specified path
-func (w *SftpWriter) ensureInitialized(killChan chan error) {
+func (w *SftpWriter) ensureInitialized(killChan chan error, ctx context.Context) {
 	if w.initialized {
 		return
 	}
 
 	client, err := util.SftpClient(w.parameters.Server, w.parameters.Username, w.parameters.AuthMethods)
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 
 	logger.Info("Path", w.parameters.Path)
 
 	file, err := client.Create(w.parameters.Path)
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 
 	w.client = client
 	w.file = file

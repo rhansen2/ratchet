@@ -1,10 +1,8 @@
 package ratchet
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"os"
-	"os/signal"
 	"sync"
 
 	"github.com/rhansen2/ratchet/data"
@@ -24,12 +22,15 @@ type Pipeline struct {
 	PrintData    bool   // Set to true to log full data payloads (only in Debug logging mode).
 	timer        *util.Timer
 	wg           sync.WaitGroup
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 // NewPipeline creates a new pipeline ready to run the given DataProcessors.
 // For more complex use-cases, see NewBranchingPipeline.
-func NewPipeline(processors ...DataProcessor) *Pipeline {
+func NewPipeline(ctx context.Context, processors ...DataProcessor) *Pipeline {
 	p := &Pipeline{Name: "Pipeline"}
+	p.ctx, p.cancel = context.WithCancel(ctx)
 	stages := make([]*PipelineStage, len(processors))
 	for i, p := range processors {
 		dp := Do(p)
@@ -46,8 +47,9 @@ func NewPipeline(processors ...DataProcessor) *Pipeline {
 // given PipelineLayout, which can accommodate branching/merging
 // between stages each containing variable number of DataProcessors.
 // See the ratchet package documentation for code examples and diagrams.
-func NewBranchingPipeline(layout *PipelineLayout) *Pipeline {
-	p := &Pipeline{layout: layout, Name: "Pipeline"}
+func NewBranchingPipeline(ctx context.Context, layout *PipelineLayout) *Pipeline {
+	ctx, cancel := context.WithCancel(ctx)
+	p := &Pipeline{layout: layout, Name: "Pipeline", ctx: ctx, cancel: cancel}
 	return p
 }
 
@@ -98,6 +100,7 @@ func (p *Pipeline) connectStages() {
 	// between the branchers and mergers
 	for _, stage := range p.layout.stages {
 		for _, dp := range stage.processors {
+			dp.ctx = p.ctx
 			if dp.branchOutChans != nil {
 				dp.branchOut()
 			}
@@ -114,24 +117,33 @@ func (p *Pipeline) runStages(killChan chan error) {
 			p.wg.Add(1)
 			// Each DataProcessor runs in a separate gorountine.
 			go func(n int, dp *dataProcessor) {
+				defer p.wg.Done()
 				// This is where the main DataProcessor interface
 				// functions are called.
 				logger.Info(p.Name, "- stage", n+1, dp, "waiting to receive data")
-				for d := range dp.inputChan {
-					logger.Info(p.Name, "- stage", n+1, dp, "received data")
-					if p.PrintData {
-						logger.Debug(p.Name, "- stage", n+1, dp, "data =", string(d))
+			processData:
+				for {
+					select {
+					case d, ok := <-dp.inputChan:
+						if !ok {
+							break processData
+						}
+						logger.Info(p.Name, "- stage", n+1, dp, "received data")
+						if p.PrintData {
+							logger.Debug(p.Name, "- stage", n+1, dp, "data =", string(d))
+						}
+						dp.recordDataReceived(d)
+						dp.processData(d, killChan)
+					case <-p.ctx.Done():
+						return
 					}
-					dp.recordDataReceived(d)
-					dp.processData(d, killChan)
 				}
 				logger.Info(p.Name, "- stage", n+1, dp, "input closed, calling Finish")
-				dp.Finish(dp.outputChan, killChan)
+				dp.Finish(dp.outputChan, killChan, p.ctx)
 				if dp.outputChan != nil {
 					logger.Info(p.Name, "- stage", n+1, dp, "closing output")
 					close(dp.outputChan)
 				}
-				p.wg.Done()
 			}(n, dp)
 		}
 	}
@@ -147,13 +159,14 @@ func (p *Pipeline) Run() (killChan chan error) {
 	p.timer = util.StartTimer()
 	killChan = make(chan error)
 
+	innerKillChan := make(chan error)
 	p.connectStages()
-	p.runStages(killChan)
+	p.runStages(innerKillChan)
 
 	for _, dp := range p.layout.stages[0].processors {
 		logger.Debug(p.Name, ": sending", StartSignal, "to", dp)
 		dp.inputChan <- data.JSON(StartSignal)
-		dp.Finish(dp.outputChan, killChan)
+		dp.Finish(dp.outputChan, innerKillChan, p.ctx)
 		close(dp.inputChan)
 	}
 
@@ -164,11 +177,23 @@ func (p *Pipeline) Run() (killChan chan error) {
 	go func() {
 		p.wg.Wait()
 		p.timer.Stop()
-		killChan <- nil
+		p.cancel()
 	}()
 
-	handleInterrupt(killChan)
-
+	go func() {
+		for {
+			select {
+			case err := <-innerKillChan:
+				p.cancel()
+				killChan <- err
+				close(killChan)
+				return
+			case <-p.ctx.Done():
+				close(killChan)
+				return
+			}
+		}
+	}()
 	return killChan
 }
 
@@ -191,16 +216,6 @@ func (p *Pipeline) initDataChan() chan data.JSON {
 // 	}
 // 	return p.Name + ": " + strings.Join(stageNames, " -> "))
 // }
-
-func handleInterrupt(killChan chan error) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for range c {
-			killChan <- errors.New("Exiting due to interrupt signal.")
-		}
-	}()
-}
 
 // Stats returns a string (formatted for output display) listing the stats
 // gathered for each stage executed.

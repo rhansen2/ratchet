@@ -3,6 +3,8 @@ package processors
 // http://docs.aws.amazon.com/sdk-for-go/api/service/s3/S3.html
 
 import (
+	"context"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -52,39 +54,39 @@ func NewS3PrefixReader(awsID, awsSecret, awsRegion, bucket, prefix string) *S3Re
 // file path is provided (not a prefix/directory).
 //
 // It optionally deletes all processed objects once the contents have been sent to outputChan
-func (r *S3Reader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (r *S3Reader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	if r.prefix != "" {
 		logger.Debug("S3Reader: process data for prefix", r.prefix)
 		objects, err := util.ListS3Objects(r.client, r.bucket, r.prefix)
 		logger.Debug("S3Reader: list =", objects)
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 		for _, o := range objects {
 			obj, err := util.GetS3Object(r.client, r.bucket, o)
-			util.KillPipelineIfErr(err, killChan)
-			r.processObject(obj, outputChan, killChan)
+			util.KillPipelineIfErr(err, killChan, ctx)
+			r.processObject(obj, outputChan, killChan, ctx)
 			r.processedObjectKeys = append(r.processedObjectKeys, o)
 		}
 	} else {
 		logger.Debug("S3Reader: process data for object", r.object)
 		obj, err := util.GetS3Object(r.client, r.bucket, r.object)
-		util.KillPipelineIfErr(err, killChan)
-		r.processObject(obj, outputChan, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
+		r.processObject(obj, outputChan, killChan, ctx)
 		r.processedObjectKeys = append(r.processedObjectKeys, r.object)
 	}
 	if r.DeleteObjects {
 		_, err := util.DeleteS3Objects(r.client, r.bucket, r.processedObjectKeys)
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 	}
 }
 
 // Finish - see interface for documentation.
-func (r *S3Reader) Finish(outputChan chan data.JSON, killChan chan error) {
+func (r *S3Reader) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
-func (r *S3Reader) processObject(obj *s3.GetObjectOutput, outputChan chan data.JSON, killChan chan error) {
+func (r *S3Reader) processObject(obj *s3.GetObjectOutput, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	// Use IoReader for actual data handling
 	r.IoReader.Reader = obj.Body
-	r.IoReader.ProcessData(nil, outputChan, killChan)
+	r.IoReader.ProcessData(nil, outputChan, killChan, ctx)
 	obj.Body.Close()
 }
 

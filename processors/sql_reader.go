@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 
@@ -43,46 +44,63 @@ func NewDynamicSQLReader(dbConn *sql.DB, sqlGenerator func(data.JSON) (string, e
 }
 
 // ProcessData - see interface for documentation.
-func (s *SQLReader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
-	s.ForEachQueryData(d, killChan, func(d data.JSON) {
-		outputChan <- d
+func (s *SQLReader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
+	s.ForEachQueryData(d, killChan, ctx, func(d data.JSON) {
+		select {
+		case outputChan <- d:
+		case <-ctx.Done():
+		}
 	})
 }
 
 // ForEachQueryData handles generating the SQL (in case of dynamic mode),
 // running the query and retrieving the data in data.JSON format, and then
 // passing the results back witih the function call to forEach.
-func (s *SQLReader) ForEachQueryData(d data.JSON, killChan chan error, forEach func(d data.JSON)) {
+func (s *SQLReader) ForEachQueryData(d data.JSON, killChan chan error, ctx context.Context, forEach func(d data.JSON)) {
 	sql := ""
 	var err error
 	if s.query == "" && s.sqlGenerator != nil {
 		sql, err = s.sqlGenerator(d)
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 	} else if s.query != "" {
 		sql = s.query
 	} else {
-		killChan <- errors.New("SQLReader: must have either static query or sqlGenerator func")
+		select {
+		case <-ctx.Done():
+			return
+		case killChan <- errors.New("SQLReader: must have either static query or sqlGenerator func"):
+		}
 	}
 
 	logger.Debug("SQLReader: Running - ", sql)
 	// See sql.go
-	dataChan, err := util.GetDataFromSQLQuery(s.readDB, sql, s.BatchSize, s.StructDestination)
-	util.KillPipelineIfErr(err, killChan)
+	dataChan, err := util.GetDataFromSQLQuery(s.readDB, sql, s.BatchSize, s.StructDestination, ctx)
 
-	for d := range dataChan {
-		// First check if an error was returned back from the SQL processing
-		// helper, then if not call forEach with the received data.
-		var derr dataErr
-		if err := data.ParseJSONSilent(d, &derr); err == nil {
-			util.KillPipelineIfErr(errors.New(derr.Error), killChan)
-		} else {
-			forEach(d)
+	util.KillPipelineIfErr(err, killChan, ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case d, ok := <-dataChan:
+			if !ok {
+				return
+			}
+			// First check if an error was returned back from the SQL processing
+			// helper, then if not call forEach with the received data.
+			var derr dataErr
+			if err := data.ParseJSONSilent(d, &derr); err == nil {
+				util.KillPipelineIfErr(errors.New(derr.Error), killChan, ctx)
+			} else {
+				forEach(d)
+			}
 		}
 	}
+
 }
 
 // Finish - see interface for documentation.
-func (s *SQLReader) Finish(outputChan chan data.JSON, killChan chan error) {
+func (s *SQLReader) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
 func (s *SQLReader) String() string {

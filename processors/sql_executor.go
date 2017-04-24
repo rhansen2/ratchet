@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 
@@ -35,11 +36,11 @@ func NewDynamicSQLExecutor(dbConn *sql.DB, sqlGenerator func(data.JSON) (string,
 }
 
 // ProcessData runs the SQL statements, deferring to util.ExecuteSQLQuery
-func (s *SQLExecutor) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (s *SQLExecutor) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	// handle panics a bit more gracefully
 	defer func() {
 		if err := recover(); err != nil {
-			util.KillPipelineIfErr(err.(error), killChan)
+			util.KillPipelineIfErr(err.(error), killChan, ctx)
 		}
 	}()
 
@@ -47,7 +48,7 @@ func (s *SQLExecutor) ProcessData(d data.JSON, outputChan chan data.JSON, killCh
 	var err error
 	if s.query == "" && s.sqlGenerator != nil {
 		sql, err = s.sqlGenerator(d)
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 	} else if s.query != "" {
 		sql = s.query
 	} else {
@@ -57,12 +58,12 @@ func (s *SQLExecutor) ProcessData(d data.JSON, outputChan chan data.JSON, killCh
 	logger.Debug("SQLExecutor: Running - ", sql)
 	// See sql.go
 	err = util.ExecuteSQLQuery(s.readDB, sql)
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 	logger.Info("SQLExecutor: Query complete")
 }
 
 // Finish - see interface for documentation.
-func (s *SQLExecutor) Finish(outputChan chan data.JSON, killChan chan error) {
+func (s *SQLExecutor) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
 func (s *SQLExecutor) String() string {

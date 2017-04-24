@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 
@@ -22,17 +23,20 @@ func NewSCP(obj string, destination string) *SCP {
 }
 
 // ProcessData sends all data to outputChan
-func (s *SCP) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
-	outputChan <- d
+func (s *SCP) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
+	select {
+	case <-ctx.Done():
+	case outputChan <- d:
+	}
 }
 
 // Finish defers to Run
-func (s *SCP) Finish(outputChan chan data.JSON, killChan chan error) {
-	s.Run(killChan)
+func (s *SCP) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
+	s.Run(killChan, ctx)
 }
 
 // Run executes the scp command from the attributes of the SCP struct
-func (s *SCP) Run(killChan chan error) {
+func (s *SCP) Run(killChan chan error, ctx context.Context) {
 	scpParams := []string{}
 	if s.Port != "" {
 		scpParams = append(scpParams, fmt.Sprintf("-P %v", s.Port))
@@ -42,5 +46,5 @@ func (s *SCP) Run(killChan chan error) {
 
 	cmd := exec.Command("scp", scpParams...)
 	_, err := cmd.Output()
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 }

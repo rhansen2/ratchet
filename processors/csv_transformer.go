@@ -1,6 +1,8 @@
 package processors
 
 import (
+	"context"
+
 	"github.com/rhansen2/ratchet/data"
 	"github.com/rhansen2/ratchet/util"
 )
@@ -28,12 +30,12 @@ func NewCSVTransformer() *CSVTransformer {
 }
 
 // ProcessData defers to util.CSVProcess
-func (w *CSVTransformer) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
-	util.CSVProcess(&w.Parameters, d, outputChan, killChan)
+func (w *CSVTransformer) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
+	util.CSVProcess(&w.Parameters, d, outputChan, killChan, ctx)
 }
 
 // Finish - see interface for documentation.
-func (w *CSVTransformer) Finish(outputChan chan data.JSON, killChan chan error) {
+func (w *CSVTransformer) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
 func (w *CSVTransformer) String() string {

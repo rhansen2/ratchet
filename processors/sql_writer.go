@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/rhansen2/ratchet/data"
@@ -42,11 +43,11 @@ func NewSQLWriter(db *sql.DB, tableName string) *SQLWriter {
 }
 
 // ProcessData defers to util.SQLInsertData
-func (s *SQLWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (s *SQLWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	// handle panics a bit more gracefully
 	defer func() {
 		if err := recover(); err != nil {
-			util.KillPipelineIfErr(err.(error), killChan)
+			util.KillPipelineIfErr(err.(error), killChan, ctx)
 		}
 	}()
 
@@ -57,13 +58,13 @@ func (s *SQLWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan
 	if err == nil && wd.TableName != "" && wd.InsertData != nil {
 		logger.Debug("SQLWriter: SQLWriterData scenario")
 		dd, err := data.NewJSON(wd.InsertData)
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 		err = util.SQLInsertData(s.writeDB, dd, wd.TableName, s.OnDupKeyUpdate, s.OnDupKeyFields, s.BatchSize)
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 	} else {
 		logger.Debug("SQLWriter: normal data scenario")
 		err = util.SQLInsertData(s.writeDB, d, s.TableName, s.OnDupKeyUpdate, s.OnDupKeyFields, s.BatchSize)
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 	}
 	logger.Info("SQLWriter: Write complete")
 }

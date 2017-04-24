@@ -1,9 +1,11 @@
 package processors
 
 import (
+	"context"
+
+	"github.com/pkg/sftp"
 	"github.com/rhansen2/ratchet/data"
 	"github.com/rhansen2/ratchet/util"
-	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -61,17 +63,17 @@ func NewSftpReaderByClient(client *sftp.Client, path string) *SftpReader {
 
 // ProcessData optionally walks through the tree to send each object separately, or sends the single
 // object upstream
-func (r *SftpReader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
-	r.ensureInitialized(killChan)
+func (r *SftpReader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
+	r.ensureInitialized(killChan, ctx)
 	if r.Walk {
-		r.walk(outputChan, killChan)
+		r.walk(outputChan, killChan, ctx)
 	} else {
-		r.sendObject(r.parameters.Path, outputChan, killChan)
+		r.sendObject(r.parameters.Path, outputChan, killChan, ctx)
 	}
 }
 
 // Finish optionally closes open references to the remote server
-func (r *SftpReader) Finish(outputChan chan data.JSON, killChan chan error) {
+func (r *SftpReader) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	if r.CloseOnFinish {
 		r.CloseClient()
 	}
@@ -87,54 +89,54 @@ func (r *SftpReader) String() string {
 	return "SftpReader"
 }
 
-func (r *SftpReader) ensureInitialized(killChan chan error) {
+func (r *SftpReader) ensureInitialized(killChan chan error, ctx context.Context) {
 	if r.initialized {
 		return
 	}
 
 	client, err := util.SftpClient(r.parameters.Server, r.parameters.Username, r.parameters.AuthMethods)
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 
 	r.client = client
 	r.initialized = true
 }
 
-func (r *SftpReader) walk(outputChan chan data.JSON, killChan chan error) {
+func (r *SftpReader) walk(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	walker := r.client.Walk(r.parameters.Path)
 	for walker.Step() {
-		util.KillPipelineIfErr(walker.Err(), killChan)
+		util.KillPipelineIfErr(walker.Err(), killChan, ctx)
 		if !walker.Stat().IsDir() {
-			r.sendObject(walker.Path(), outputChan, killChan)
+			r.sendObject(walker.Path(), outputChan, killChan, ctx)
 		}
 	}
 }
 
-func (r *SftpReader) sendObject(path string, outputChan chan data.JSON, killChan chan error) {
+func (r *SftpReader) sendObject(path string, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	if r.FileNamesOnly {
-		r.sendFilePath(path, outputChan, killChan)
+		r.sendFilePath(path, outputChan, killChan, ctx)
 	} else {
-		r.sendFile(path, outputChan, killChan)
+		r.sendFile(path, outputChan, killChan, ctx)
 	}
 }
 
-func (r *SftpReader) sendFilePath(path string, outputChan chan data.JSON, killChan chan error) {
+func (r *SftpReader) sendFilePath(path string, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	sftpPath := util.SftpPath{Path: path}
 	d, err := data.NewJSON(sftpPath)
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 	outputChan <- d
 }
 
-func (r *SftpReader) sendFile(path string, outputChan chan data.JSON, killChan chan error) {
+func (r *SftpReader) sendFile(path string, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	file, err := r.client.Open(path)
 
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 	defer file.Close()
 
 	r.IoReader.Reader = file
-	r.IoReader.ProcessData(nil, outputChan, killChan)
+	r.IoReader.ProcessData(nil, outputChan, killChan, ctx)
 
 	if r.DeleteObjects {
 		err = r.client.Remove(path)
-		util.KillPipelineIfErr(err, killChan)
+		util.KillPipelineIfErr(err, killChan, ctx)
 	}
 }

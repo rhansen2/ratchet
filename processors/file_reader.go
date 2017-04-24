@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"io/ioutil"
 
 	"github.com/rhansen2/ratchet/data"
@@ -20,14 +21,14 @@ func NewFileReader(filename string) *FileReader {
 }
 
 // ProcessData reads a file and sends its contents to outputChan
-func (r *FileReader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (r *FileReader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	d, err := ioutil.ReadFile(r.filename)
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 	outputChan <- d
 }
 
 // Finish - see interface for documentation.
-func (r *FileReader) Finish(outputChan chan data.JSON, killChan chan error) {
+func (r *FileReader) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
 func (r *FileReader) String() string {

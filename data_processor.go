@@ -2,6 +2,7 @@ package ratchet
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"sync"
 
@@ -16,13 +17,13 @@ type DataProcessor interface {
 	// ProcessData is called with a data.JSON instance, which is the data being received,
 	// an outputChan, which is the channel to send data to, and a killChan,
 	// which is a channel to send unexpected errors to (halting execution of the Pipeline).
-	ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error)
+	ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context)
 
 	// Finish will be called after the previous stage has finished sending data,
 	// and no more data will be received by this DataProcessor. Often times
 	// Finish can be an empty function implementation, but sometimes it is
 	// necessary to perform final data processing.
-	Finish(outputChan chan data.JSON, killChan chan error)
+	Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context)
 }
 
 // dataProcessor is a type used internally to the Pipeline management
@@ -39,6 +40,7 @@ type dataProcessor struct {
 	outputs    []DataProcessor
 	inputChan  chan data.JSON
 	outputChan chan data.JSON
+	ctx        context.Context
 }
 
 type chanBrancher struct {
@@ -53,7 +55,11 @@ func (dp *dataProcessor) branchOut() {
 				// can alter data as needed.
 				dc := make(data.JSON, len(d))
 				copy(dc, d)
-				out <- dc
+				select {
+				case out <- dc:
+				case <-dp.ctx.Done():
+					return
+				}
 			}
 			dp.recordDataSent(d)
 		}
@@ -72,10 +78,22 @@ type chanMerger struct {
 func (dp *dataProcessor) mergeIn() {
 	// Start a merge goroutine for each input channel.
 	mergeData := func(c chan data.JSON) {
-		for d := range c {
-			dp.inputChan <- d
+		defer dp.mergeWait.Done()
+		for {
+			select {
+			case d, ok := <-c:
+				if !ok {
+					return
+				}
+				select {
+				case dp.inputChan <- d:
+				case <-dp.ctx.Done():
+					return
+				}
+			case <-dp.ctx.Done():
+				return
+			}
 		}
-		dp.mergeWait.Done()
 	}
 	dp.mergeWait.Add(len(dp.mergeInChans))
 	for _, in := range dp.mergeInChans {

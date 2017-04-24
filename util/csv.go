@@ -3,6 +3,7 @@ package util
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"sort"
 
@@ -33,9 +34,9 @@ type CSVParameters struct {
 
 // CSVProcess writes the contents to the file and optionally sends the written bytes
 // upstream on outputChan
-func CSVProcess(params *CSVParameters, d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func CSVProcess(params *CSVParameters, d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	objects, err := data.ObjectsFromJSON(d)
-	KillPipelineIfErr(err, killChan)
+	KillPipelineIfErr(err, killChan, ctx)
 
 	if params.Header == nil {
 		for k := range objects[0] {
@@ -69,11 +70,11 @@ func CSVProcess(params *CSVParameters, d data.JSON, outputChan chan data.JSON, k
 		params.Writer.SetWriter(bufio.NewWriter(&b))
 
 		err = params.Writer.WriteAll(rows)
-		KillPipelineIfErr(err, killChan)
+		KillPipelineIfErr(err, killChan, ctx)
 
 		outputChan <- []byte(b.String())
 	} else {
 		err = params.Writer.WriteAll(rows)
-		KillPipelineIfErr(err, killChan)
+		KillPipelineIfErr(err, killChan, ctx)
 	}
 }

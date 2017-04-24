@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"regexp"
 
 	"github.com/rhansen2/ratchet/data"
@@ -24,9 +25,9 @@ func NewRegexpMatcher(pattern string) *RegexpMatcher {
 }
 
 // ProcessData sends the data it receives to the outputChan only if it matches the supplied regex
-func (r *RegexpMatcher) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (r *RegexpMatcher) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	matches, err := regexp.Match(r.pattern, d)
-	util.KillPipelineIfErr(err, killChan)
+	util.KillPipelineIfErr(err, killChan, ctx)
 	if r.DebugLog {
 		logger.Debug("RegexpMatcher: checking if", string(d), "matches pattern", r.pattern, ". MATCH=", matches)
 	}
@@ -36,7 +37,7 @@ func (r *RegexpMatcher) ProcessData(d data.JSON, outputChan chan data.JSON, kill
 }
 
 // Finish - see interface for documentation.
-func (r *RegexpMatcher) Finish(outputChan chan data.JSON, killChan chan error) {
+func (r *RegexpMatcher) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
 func (r *RegexpMatcher) String() string {

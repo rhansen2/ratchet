@@ -1,14 +1,15 @@
 package util
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/kisielk/sqlstruct"
 	"github.com/rhansen2/ratchet/data"
 	"github.com/rhansen2/ratchet/logger"
-	"github.com/kisielk/sqlstruct"
 )
 
 // GetDataFromSQLQuery is a util function that, given a properly intialized sql.DB
@@ -18,7 +19,7 @@ import (
 // returned immediately. It is also possible for errors to occur during execution as data
 // is retrieved from the query. If this happens, the object returned will be a JSON
 // object in the form of {"Error": "description"}.
-func GetDataFromSQLQuery(db *sql.DB, query string, batchSize int, structDest interface{}) (chan data.JSON, error) {
+func GetDataFromSQLQuery(db *sql.DB, query string, batchSize int, structDest interface{}, ctx context.Context) (chan data.JSON, error) {
 	stmt, err := db.Prepare(query)
 	if err != nil {
 		return nil, err
@@ -38,15 +39,15 @@ func GetDataFromSQLQuery(db *sql.DB, query string, batchSize int, structDest int
 	dataChan := make(chan data.JSON)
 
 	if structDest != nil {
-		go scanRowsUsingStruct(rows, columns, structDest, batchSize, dataChan)
+		go scanRowsUsingStruct(rows, columns, structDest, batchSize, dataChan, ctx)
 	} else {
-		go scanDataGeneric(rows, columns, batchSize, dataChan)
+		go scanDataGeneric(rows, columns, batchSize, dataChan, ctx)
 	}
 
 	return dataChan, nil
 }
 
-func scanRowsUsingStruct(rows *sql.Rows, columns []string, structDest interface{}, batchSize int, dataChan chan data.JSON) {
+func scanRowsUsingStruct(rows *sql.Rows, columns []string, structDest interface{}, batchSize int, dataChan chan data.JSON, ctx context.Context) {
 	defer rows.Close()
 
 	tableData := []map[string]interface{}{}
@@ -71,7 +72,7 @@ func scanRowsUsingStruct(rows *sql.Rows, columns []string, structDest interface{
 		tableData = append(tableData, entry)
 
 		if batchSize > 0 && len(tableData) >= batchSize {
-			sendTableData(tableData, dataChan)
+			sendTableData(tableData, dataChan, ctx)
 			tableData = []map[string]interface{}{}
 		}
 	}
@@ -81,13 +82,13 @@ func scanRowsUsingStruct(rows *sql.Rows, columns []string, structDest interface{
 
 	// Flush remaining tableData
 	if len(tableData) > 0 {
-		sendTableData(tableData, dataChan)
+		sendTableData(tableData, dataChan, ctx)
 	}
 
 	close(dataChan) // signal completion to caller
 }
 
-func scanDataGeneric(rows *sql.Rows, columns []string, batchSize int, dataChan chan data.JSON) {
+func scanDataGeneric(rows *sql.Rows, columns []string, batchSize int, dataChan chan data.JSON, ctx context.Context) {
 	defer rows.Close()
 
 	tableData := []map[string]interface{}{}
@@ -119,7 +120,7 @@ func scanDataGeneric(rows *sql.Rows, columns []string, batchSize int, dataChan c
 		tableData = append(tableData, entry)
 
 		if batchSize > 0 && len(tableData) >= batchSize {
-			sendTableData(tableData, dataChan)
+			sendTableData(tableData, dataChan, ctx)
 			tableData = []map[string]interface{}{}
 		}
 	}
@@ -129,7 +130,7 @@ func scanDataGeneric(rows *sql.Rows, columns []string, batchSize int, dataChan c
 
 	// Flush remaining tableData
 	if len(tableData) > 0 {
-		sendTableData(tableData, dataChan)
+		sendTableData(tableData, dataChan, ctx)
 	}
 
 	close(dataChan) // signal completion to caller
@@ -154,12 +155,15 @@ func determineBytesValue(b []byte) (interface{}, error) {
 	}
 }
 
-func sendTableData(tableData []map[string]interface{}, dataChan chan data.JSON) {
+func sendTableData(tableData []map[string]interface{}, dataChan chan data.JSON, ctx context.Context) {
 	d, err := data.NewJSON(tableData)
 	if err != nil {
 		sendErr(err, dataChan)
 	} else {
-		dataChan <- d
+		select {
+		case <-ctx.Done():
+		case dataChan <- d:
+		}
 	}
 }
 

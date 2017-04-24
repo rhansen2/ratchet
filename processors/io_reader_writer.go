@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"io"
 
 	"github.com/rhansen2/ratchet/data"
@@ -28,15 +29,18 @@ func NewIoReaderWriter(reader io.Reader, writer io.Writer) *IoReaderWriter {
 
 // ProcessData grabs data from IoReader.ForEachData, then sends it to IoWriter.ProcessData in addition
 // to sending it upstream on the outputChan
-func (r *IoReaderWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (r *IoReaderWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	r.ForEachData(killChan, func(d data.JSON) {
-		r.IoWriter.ProcessData(d, outputChan, killChan)
-		outputChan <- d
-	})
+		r.IoWriter.ProcessData(d, outputChan, killChan, ctx)
+		select {
+		case outputChan <- d:
+		case <-ctx.Done():
+		}
+	}, ctx)
 }
 
 // Finish - see interface for documentation.
-func (r *IoReaderWriter) Finish(outputChan chan data.JSON, killChan chan error) {
+func (r *IoReaderWriter) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 }
 
 func (r *IoReaderWriter) String() string {

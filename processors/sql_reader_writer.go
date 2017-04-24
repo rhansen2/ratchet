@@ -1,6 +1,7 @@
 package processors
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/rhansen2/ratchet/data"
@@ -36,10 +37,13 @@ func NewDynamicSQLReaderWriter(readConn *sql.DB, writeConn *sql.DB, sqlGenerator
 }
 
 // ProcessData uses SQLReader methods for processing data - this works via composition
-func (s *SQLReaderWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
-	s.ForEachQueryData(d, killChan, func(d data.JSON) {
-		s.SQLWriter.ProcessData(d, outputChan, killChan)
-		outputChan <- d
+func (s *SQLReaderWriter) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
+	s.ForEachQueryData(d, killChan, ctx, func(d data.JSON) {
+		s.SQLWriter.ProcessData(d, outputChan, killChan, ctx)
+		select {
+		case <-ctx.Done():
+		case outputChan <- d:
+		}
 	})
 }
 

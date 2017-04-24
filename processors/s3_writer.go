@@ -1,6 +1,8 @@
 package processors
 
 import (
+	"context"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/rhansen2/ratchet/data"
@@ -35,12 +37,12 @@ func NewS3Writer(awsID, awsSecret, awsRegion, bucket, key string) *S3Writer {
 }
 
 // ProcessData enqueues all received data
-func (w *S3Writer) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error) {
+func (w *S3Writer) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	w.data = append(w.data, string(d))
 }
 
 // Finish writes all enqueued data to S3, defering to util.WriteS3Object
-func (w *S3Writer) Finish(outputChan chan data.JSON, killChan chan error) {
+func (w *S3Writer) Finish(outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	util.WriteS3Object(w.data, w.config, w.bucket, w.key, w.LineSeparator, w.Compress)
 }
 
