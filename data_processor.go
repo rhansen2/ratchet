@@ -49,19 +49,28 @@ type chanBrancher struct {
 
 func (dp *dataProcessor) branchOut() {
 	go func() {
-		for d := range dp.outputChan {
-			for _, out := range dp.branchOutChans {
-				// Make a copy to ensure concurrent stages
-				// can alter data as needed.
-				dc := make(data.JSON, len(d))
-				copy(dc, d)
-				select {
-				case out <- dc:
-				case <-dp.ctx.Done():
-					return
+	processLoop:
+		for {
+			select {
+			case d, ok := <-dp.outputChan:
+				if !ok {
+					break processLoop
 				}
+				for _, out := range dp.branchOutChans {
+					// Make a copy to ensure concurrent stages
+					// can alter data as needed.
+					dc := make(data.JSON, len(d))
+					copy(dc, d)
+					select {
+					case out <- dc:
+					case <-dp.ctx.Done():
+						return
+					}
+				}
+				dp.recordDataSent(d)
+			case <-dp.ctx.Done():
+				return
 			}
-			dp.recordDataSent(d)
 		}
 		// Once all data is received, also close all the outputs
 		for _, out := range dp.branchOutChans {
