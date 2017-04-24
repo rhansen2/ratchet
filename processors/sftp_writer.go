@@ -3,9 +3,9 @@ package processors
 import (
 	"golang.org/x/crypto/ssh"
 
-	"github.com/dailyburn/ratchet/data"
-	"github.com/dailyburn/ratchet/logger"
-	"github.com/dailyburn/ratchet/util"
+	"github.com/rhansen2/ratchet/data"
+	"github.com/rhansen2/ratchet/logger"
+	"github.com/rhansen2/ratchet/util"
 	"github.com/pkg/sftp"
 )
 

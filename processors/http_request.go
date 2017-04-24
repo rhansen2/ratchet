@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/dailyburn/ratchet/data"
-	"github.com/dailyburn/ratchet/util"
+	"github.com/rhansen2/ratchet/data"
+	"github.com/rhansen2/ratchet/util"
 )
 
 // HTTPRequest executes an HTTP request and passes along the response body.

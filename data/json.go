@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/dailyburn/ratchet/logger"
+	"github.com/rhansen2/ratchet/logger"
 )
 
 // JSON is the data type that is passed along all data channels.

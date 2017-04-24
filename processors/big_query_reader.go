@@ -3,10 +3,10 @@ package processors
 import (
 	"errors"
 
-	bigquery "github.com/dailyburn/bigquery/client"
-	"github.com/dailyburn/ratchet/data"
-	"github.com/dailyburn/ratchet/logger"
-	"github.com/dailyburn/ratchet/util"
+	bigquery "github.com/rhansen2/bigquery/client"
+	"github.com/rhansen2/ratchet/data"
+	"github.com/rhansen2/ratchet/logger"
+	"github.com/rhansen2/ratchet/util"
 )
 
 // BigQueryReader is used to query data from Google's BigQuery,

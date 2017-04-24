@@ -1,6 +1,6 @@
 package processors
 
-import "github.com/dailyburn/ratchet/data"
+import "github.com/rhansen2/ratchet/data"
 
 // Passthrough simply passes the data on to the next stage.
 // We have to set a placeholder field - if we leave this as an empty struct we get some properties
