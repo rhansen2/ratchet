@@ -23,6 +23,7 @@ func NewCSVReader(filename string) *CSVReader {
 func (c *CSVReader) ProcessData(d data.JSON, outputChan chan data.JSON, killChan chan error, ctx context.Context) {
 	f, err := os.Open(c.filename)
 	util.KillPipelineIfErr(err, killChan, ctx)
+	defer f.Close()
 	reader := csv.NewReader(f)
 	csvs, err := reader.ReadAll()
 	util.KillPipelineIfErr(err, killChan, ctx)
