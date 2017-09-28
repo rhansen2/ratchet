@@ -116,37 +116,48 @@ func (p *Pipeline) connectStages() {
 func (p *Pipeline) runStages(killChan chan error) {
 	for n, stage := range p.layout.stages {
 		for _, dp := range stage.processors {
-			p.wg.Add(1)
-			// Each DataProcessor runs in a separate gorountine.
-			go func(n int, dp *dataProcessor) {
-				defer p.wg.Done()
-				// This is where the main DataProcessor interface
-				// functions are called.
-				logger.Info(p.Name, "- stage", n+1, dp, "waiting to receive data")
-			processData:
-				for {
-					select {
-					case d, ok := <-dp.inputChan:
-						if !ok {
-							break processData
+			numWorkers := 1
+			if dp.concurrency > 1 {
+				numWorkers = dp.concurrency
+			}
+			p.wg.Add(numWorkers)
+			var concurrencyWg sync.WaitGroup
+			concurrencyWg.Add(numWorkers)
+			for i := 0; i < numWorkers; i++ {
+				// Each DataProcessor runs in a separate gorountine.
+				go func(n int, dp *dataProcessor, i int) {
+					defer p.wg.Done()
+					defer concurrencyWg.Done()
+					// This is where the main DataProcessor interface
+					// functions are called.
+					logger.Info(p.Name, "- stage", n+1, dp, "waiting to receive data")
+				processData:
+					for {
+						select {
+						case d, ok := <-dp.inputChan:
+							if !ok {
+								break processData
+							}
+							logger.Info(p.Name, "- stage", n+1, dp, "received data")
+							if p.PrintData {
+								logger.Debug(p.Name, "- stage", n+1, dp, "data =", string(d))
+							}
+							dp.recordDataReceived(d)
+							dp.processData(d, killChan)
+						case <-p.ctx.Done():
+							return
 						}
-						logger.Info(p.Name, "- stage", n+1, dp, "received data")
-						if p.PrintData {
-							logger.Debug(p.Name, "- stage", n+1, dp, "data =", string(d))
-						}
-						dp.recordDataReceived(d)
-						dp.processData(d, killChan)
-					case <-p.ctx.Done():
-						return
 					}
-				}
-				logger.Info(p.Name, "- stage", n+1, dp, "input closed, calling Finish")
-				dp.Finish(dp.outputChan, killChan, p.ctx)
+					logger.Info(p.Name, "- stage", n+1, dp, "input closed, calling Finish")
+					dp.Finish(dp.outputChan, killChan, p.ctx)
+				}(n, dp, i)
+			}
+			go func(dp *dataProcessor, n int) {
+				concurrencyWg.Wait()
 				if dp.outputChan != nil {
-					logger.Info(p.Name, "- stage", n+1, dp, "closing output")
 					close(dp.outputChan)
 				}
-			}(n, dp)
+			}(dp, n)
 		}
 	}
 }
