@@ -85,6 +85,7 @@ func (dp *dataProcessor) processData(d data.JSON, killChan chan error) {
 				exit <- true
 				return
 			case <-dp.ctx.Done():
+				exit <- true
 				return
 			}
 		}
@@ -93,7 +94,10 @@ func (dp *dataProcessor) processData(d data.JSON, killChan chan error) {
 	// instead of the original outputChan
 	go dp.recordExecution(func() {
 		dp.ProcessData(d, rc, killChan, dp.ctx)
-		done <- true
+		select {
+		case done <- true:
+		case <-dp.ctx.Done():
+		}
 	})
 
 	// wait on processing to complete
