@@ -215,6 +215,12 @@ func (p *Pipeline) Run() (killChan chan error) {
 	return killChan
 }
 
+func (p *Pipeline) Cleanup() {
+	if p.onComplete != nil {
+		p.onComplete
+	}
+}
+
 func (p *Pipeline) initDataChans(length int) []chan data.JSON {
 	cs := make([]chan data.JSON, length)
 	for i := range cs {
