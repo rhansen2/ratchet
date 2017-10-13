@@ -217,7 +217,7 @@ func (p *Pipeline) Run() (killChan chan error) {
 
 func (p *Pipeline) Cleanup() {
 	if p.onComplete != nil {
-		p.onComplete
+		p.onComplete()
 	}
 }
 
