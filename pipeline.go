@@ -190,13 +190,15 @@ func (p *Pipeline) Run() (killChan chan error) {
 	go func() {
 		p.wg.Wait()
 		p.timer.Stop()
-		p.cancel()
 	}()
 
 	go func() {
 		defer func() {
 			if p.onComplete != nil {
 				p.onComplete()
+			}
+			if p.cancel != nil {
+				p.cancel()
 			}
 		}()
 		for {
@@ -207,6 +209,7 @@ func (p *Pipeline) Run() (killChan chan error) {
 				close(killChan)
 				return
 			case <-p.ctx.Done():
+				killChan <- p.ctx.Err()
 				close(killChan)
 				return
 			}
