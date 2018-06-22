@@ -174,9 +174,14 @@ func (p *Pipeline) Run() (killChan chan error) {
 	p.connectStages()
 	p.runStages(innerKillChan)
 
+INIT:
 	for _, dp := range p.layout.stages[0].processors {
 		logger.Debug(p.Name, ": sending", StartSignal, "to", dp)
-		dp.inputChan <- data.JSON(StartSignal)
+		select {
+		case dp.inputChan <- data.JSON(StartSignal):
+		case <-p.ctx.Done():
+			break INIT
+		}
 		dp.Finish(dp.outputChan, innerKillChan, p.ctx)
 		close(dp.inputChan)
 	}
